@@ -11,6 +11,7 @@ TARGET = ../libmltsdl2$(LIBSUF)
 OBJS = factory.o \
 	   common.o \
 	   consumer_sdl2.o \
+	   consumer_sdl2_widget.o \
 	   consumer_sdl2_audio.o
 
 ifeq ($(targetos),Darwin)

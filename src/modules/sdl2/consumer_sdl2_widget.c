@@ -93,12 +93,16 @@ static int setup_sdl_video( consumer_sdl self );
 
 mlt_consumer consumer_sdl2_widget_init( mlt_profile profile, mlt_service_type type, const char *id, char *arg )
 {
+	printf("consumer_sdl2_widget_init!\n");
+	fflush(stdout);
+
 	// Create the consumer object
 	consumer_sdl self = calloc( 1, sizeof( struct consumer_sdl_widget_s ) );
 
 	// If no malloc'd and consumer init ok
 	if ( self != NULL && mlt_consumer_init( &self->parent, self, profile ) == 0 )
 	{
+		mlt_log_error( MLT_CONSUMER_SERVICE( self ), "consumer_sdl2_widget_init\n" );
 		// Create the queue
 		self->queue = mlt_deque_init( );
 
@@ -120,7 +124,7 @@ mlt_consumer consumer_sdl2_widget_init( mlt_profile profile, mlt_service_type ty
 		pthread_cond_init( &self->audio_cond, NULL);
 		pthread_mutex_init( &self->video_mutex, NULL );
 		pthread_cond_init( &self->video_cond, NULL);
-		
+
 		// Default scaler (for now we'll use nearest)
 		mlt_properties_set( self->properties, "rescale", "nearest" );
 		mlt_properties_set( self->properties, "deinterlace_method", "onefield" );
@@ -137,7 +141,7 @@ mlt_consumer consumer_sdl2_widget_init( mlt_profile profile, mlt_service_type ty
 
 		// Ensure we don't join on a non-running object
 		self->joined = 1;
-		
+
 		// process actual param
 		if ( arg && sscanf( arg, "%dx%d", &self->width, &self->height ) )
 		{
@@ -148,7 +152,7 @@ mlt_consumer consumer_sdl2_widget_init( mlt_profile profile, mlt_service_type ty
 			self->width = mlt_properties_get_int( self->properties, "width" );
 			self->height = mlt_properties_get_int( self->properties, "height" );
 		}
-	
+
 		// Allow thread to be started/stopped
 		parent->start = consumer_start;
 		parent->stop = consumer_stop;
@@ -342,7 +346,7 @@ static void sdl_fill_audio( void *udata, uint8_t *stream, int len )
 	}
 	else
 	{
-		// Mix the audio 
+		// Mix the audio
 		SDL_MixAudio( stream, self->audio_buffer, len, ( int )( ( float )SDL_MIX_MAXVOLUME * volume ) );
 
 		// No audio left
@@ -553,9 +557,17 @@ static int setup_sdl_video( consumer_sdl self )
 	}
 
 	pthread_mutex_lock( &mlt_sdl_mutex );
-	self->sdl_window = SDL_CreateWindow("MLT", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-		self->window_width, self->window_height, sdl_flags);
+
+	mlt_properties parent_properties = MLT_CONSUMER_PROPERTIES( &self->parent );
+	int data = mlt_properties_get_int( parent_properties, "window_id" );
+	//mlt_log_info("mlt xid: %d", &x11_window);
+	//int* data = &x11_window;
+  self->sdl_window = SDL_CreateWindowFrom ( (void*) data);
+ 	//mlt_log_info("Hello, World!");
+	//self->sdl_window = SDL_CreateWindow("MLT", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+    //        self->window_width, self->window_height, sdl_flags);
 	self->sdl_renderer = SDL_CreateRenderer(self->sdl_window, -1, SDL_RENDERER_ACCELERATED);
+
 	if ( self->sdl_renderer )
 	{
 		// Get texture width and height from the profile.
@@ -636,7 +648,7 @@ static int consumer_play_video( consumer_sdl self, mlt_frame frame )
 			}
 			// Special case optimisation to negate odd effect of sample aspect ratio
 			// not corresponding exactly with image resolution.
-			else if ( (int)( this_aspect * 1000 ) == (int)( display_ratio * 1000 ) ) 
+			else if ( (int)( this_aspect * 1000 ) == (int)( display_ratio * 1000 ) )
 			{
 				self->sdl_rect.w = self->window_width;
 				self->sdl_rect.h = self->window_height;
@@ -652,7 +664,7 @@ static int consumer_play_video( consumer_sdl self, mlt_frame frame )
 				self->sdl_rect.w = self->window_height * display_ratio;
 				self->sdl_rect.h = self->window_height;
 			}
-			
+
 			self->sdl_rect.x = ( self->window_width - self->sdl_rect.w ) / 2;
 			self->sdl_rect.y = ( self->window_height - self->sdl_rect.h ) / 2;
 			self->sdl_rect.x -= self->sdl_rect.x % 2;
@@ -876,7 +888,7 @@ static void *consumer_thread( void *arg )
 	}
 
 	self->running = 0;
-	
+
 	// Unblock sdl_preview
 	if ( mlt_properties_get_int( MLT_CONSUMER_PROPERTIES( consumer ), "put_mode" ) &&
 	     mlt_properties_get_int( MLT_CONSUMER_PROPERTIES( consumer ), "put_pending" ) )
@@ -923,7 +935,7 @@ static void consumer_close( mlt_consumer parent )
 	// Destroy mutexes
 	pthread_mutex_destroy( &self->audio_mutex );
 	pthread_cond_destroy( &self->audio_cond );
-		
+
 	// Finally clean up this
 	free( self );
 }

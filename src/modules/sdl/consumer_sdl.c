@@ -115,7 +115,7 @@ mlt_consumer consumer_sdl_init( mlt_profile profile, mlt_service_type type, cons
 		pthread_cond_init( &self->audio_cond, NULL);
 		pthread_mutex_init( &self->video_mutex, NULL );
 		pthread_cond_init( &self->video_cond, NULL);
-		
+
 		// Default scaler (for now we'll use nearest)
 		mlt_properties_set( self->properties, "rescale", "nearest" );
 		mlt_properties_set( self->properties, "deinterlace_method", "onefield" );
@@ -132,7 +132,7 @@ mlt_consumer consumer_sdl_init( mlt_profile profile, mlt_service_type type, cons
 
 		// Ensure we don't join on a non-running object
 		self->joined = 1;
-		
+
 		// process actual param
 		if ( arg && sscanf( arg, "%dx%d", &self->width, &self->height ) )
 		{
@@ -143,12 +143,12 @@ mlt_consumer consumer_sdl_init( mlt_profile profile, mlt_service_type type, cons
 			self->width = mlt_properties_get_int( self->properties, "width" );
 			self->height = mlt_properties_get_int( self->properties, "height" );
 		}
-	
+
 		// Set the sdl flags
 		self->sdl_flags = SDL_HWSURFACE | SDL_ASYNCBLIT | SDL_HWACCEL | SDL_DOUBLEBUF;
 #if !defined(__APPLE__)
 		self->sdl_flags |= SDL_RESIZABLE;
-#endif		
+#endif
 		// Allow thread to be started/stopped
 		parent->start = consumer_start;
 		parent->stop = consumer_stop;
@@ -384,7 +384,7 @@ static void sdl_fill_audio( void *udata, uint8_t *stream, int len )
 		// Just to be safe, wipe the stream first
 		memset( stream, 0, len );
 
-		// Mix the audio 
+		// Mix the audio
 		SDL_MixAudio( stream, self->audio_buffer, len, ( int )( ( float )SDL_MIX_MAXVOLUME * volume ) );
 
 		// No audio left
@@ -535,14 +535,14 @@ static int consumer_play_video( consumer_sdl self, mlt_frame frame )
 	{
 		// Get the image, width and height
 		mlt_frame_get_image( frame, &image, &vfmt, &width, &height, 0 );
-		
+
 		void *pool = mlt_cocoa_autorelease_init();
 
 		// Handle events
 		if ( SDL_GetVideoSurface() )
 		{
 			SDL_Event event;
-	
+
 			sdl_lock_display( );
 			pthread_mutex_lock( &mlt_sdl_mutex );
 			changed = consumer_get_dimensions( &self->window_width, &self->window_height );
@@ -578,7 +578,7 @@ static int consumer_play_video( consumer_sdl self, mlt_frame frame )
 				}
 			}
 		}
-	
+
 		sdl_lock_display();
 
 		if ( width != self->width || height != self->height )
@@ -640,7 +640,7 @@ static int consumer_play_video( consumer_sdl self, mlt_frame frame )
 			}
 			// Special case optimisation to negate odd effect of sample aspect ratio
 			// not corresponding exactly with image resolution.
-			else if ( (int)( this_aspect * 1000 ) == (int)( display_ratio * 1000 ) ) 
+			else if ( (int)( this_aspect * 1000 ) == (int)( display_ratio * 1000 ) )
 			{
 				self->rect.w = self->window_width;
 				self->rect.h = self->window_height;
@@ -656,7 +656,7 @@ static int consumer_play_video( consumer_sdl self, mlt_frame frame )
 				self->rect.w = self->window_height * display_ratio;
 				self->rect.h = self->window_height;
 			}
-			
+
 			self->rect.x = ( self->window_width - self->rect.w ) / 2;
 			self->rect.y = ( self->window_height - self->rect.h ) / 2;
 			self->rect.x -= self->rect.x % 2;
@@ -889,7 +889,7 @@ static void *consumer_thread( void *arg )
 	}
 
 	self->running = 0;
-	
+
 	// Unblock sdl_preview
 	if ( mlt_properties_get_int( MLT_CONSUMER_PROPERTIES( consumer ), "put_mode" ) &&
 	     mlt_properties_get_int( MLT_CONSUMER_PROPERTIES( consumer ), "put_pending" ) )
@@ -938,7 +938,7 @@ static int consumer_get_dimensions( int *width, int *height )
 	{
 #ifndef _WIN32
 		// Check that we have the X11 wm
-		if ( wm.subsystem == SDL_SYSWM_X11 ) 
+		if ( wm.subsystem == SDL_SYSWM_X11 )
 		{
 			// Get the SDL window
 			Window window = wm.info.x11.window;
@@ -987,7 +987,7 @@ static void consumer_close( mlt_consumer parent )
 	// Destroy mutexes
 	pthread_mutex_destroy( &self->audio_mutex );
 	pthread_cond_destroy( &self->audio_cond );
-		
+
 	// Finally clean up this
 	free( self );
 }

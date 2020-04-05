@@ -93,7 +93,7 @@ static int setup_sdl_video( consumer_sdl self );
 
 mlt_consumer consumer_sdl2_widget_init( mlt_profile profile, mlt_service_type type, const char *id, char *arg )
 {
-	printf("consumer_sdl2_widget_init!\n");
+	printf("IN: consumer_sdl2_widget_init!\n");
 	fflush(stdout);
 
 	// Create the consumer object
@@ -181,6 +181,9 @@ static void consumer_sdl_event( mlt_listener listener, mlt_properties owner, mlt
 
 int consumer_start( mlt_consumer parent )
 {
+	printf("IN: consumer_start!\n");
+	fflush(stdout);
+
 	consumer_sdl self = parent->child;
 
 	if ( !self->running )
@@ -249,6 +252,9 @@ int consumer_start( mlt_consumer parent )
 
 int consumer_stop( mlt_consumer parent )
 {
+	printf("IN: consumer_stop!\n");
+	fflush(stdout);
+
 	// Get the actual object
 	consumer_sdl self = parent->child;
 
@@ -302,6 +308,9 @@ int consumer_is_stopped( mlt_consumer parent )
 
 void consumer_purge( mlt_consumer parent )
 {
+	printf("IN: consumer_purge!\n");
+	fflush(stdout);
+
 	consumer_sdl self = parent->child;
 	if ( self->running )
 	{
@@ -503,6 +512,9 @@ static int consumer_play_audio( consumer_sdl self, mlt_frame frame, int init_aud
 
 static int setup_sdl_video( consumer_sdl self )
 {
+	printf("IN: setup_sdl_video!\n");
+	fflush(stdout);
+
 	int error = 0;
 	int sdl_flags = SDL_WINDOW_RESIZABLE;
 	int texture_format = SDL_PIXELFORMAT_YUY2;
@@ -933,6 +945,9 @@ static void *consumer_thread( void *arg )
 
 static void consumer_close( mlt_consumer parent )
 {
+	printf("IN: consumer_close!\n");
+	fflush(stdout);
+
 	// Get the actual object
 	consumer_sdl self = parent->child;
 

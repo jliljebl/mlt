@@ -547,7 +547,7 @@ static int setup_sdl_video( consumer_sdl self )
 		return -1;
 	}
 #endif
-
+	texture_format = SDL_PIXELFORMAT_YUY2;
 	if ( mlt_properties_get_int( self->properties, "fullscreen" ) )
 	{
 		self->window_width = self->width;
@@ -559,14 +559,11 @@ static int setup_sdl_video( consumer_sdl self )
 	pthread_mutex_lock( &mlt_sdl_mutex );
 
 	mlt_properties parent_properties = MLT_CONSUMER_PROPERTIES( &self->parent );
-	int data = mlt_properties_get_int( parent_properties, "window_id" );
-	//mlt_log_info("mlt xid: %d", &x11_window);
-	//int* data = &x11_window;
-  self->sdl_window = SDL_CreateWindowFrom ( (void*) data);
- 	//mlt_log_info("Hello, World!");
-	//self->sdl_window = SDL_CreateWindow("MLT", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-    //        self->window_width, self->window_height, sdl_flags);
-	self->sdl_renderer = SDL_CreateRenderer(self->sdl_window, -1, SDL_RENDERER_ACCELERATED);
+	int xid = mlt_properties_get_int( parent_properties, "window_id" );
+  self->sdl_window = SDL_CreateWindowFrom ( (void*) xid );
+	SDL_SetWindowResizable( self->sdl_window, SDL_TRUE );
+
+	self->sdl_renderer = SDL_CreateRenderer( self->sdl_window, -1, SDL_RENDERER_ACCELERATED);
 
 	if ( self->sdl_renderer )
 	{
@@ -615,13 +612,26 @@ static int consumer_play_video( consumer_sdl self, mlt_frame frame )
 		if ( self->running )
 		{
 			// Determine window's new display aspect ratio
+			int window_size_changed = 0;
 			int x = mlt_properties_get_int( properties, "window_width" );
 			if ( x && x != self->window_width )
+			{
 				self->window_width = x;
+				window_size_changed = 1;
+			}
 			x = mlt_properties_get_int( properties, "window_height" );
 			if ( x && x != self->window_height )
+			{
 				self->window_height = x;
+				window_size_changed = 1;
+			}
 			double this_aspect = ( double )self->window_width / self->window_height;
+
+			// Resize sdl window if needed
+			if ( window_size_changed )
+			{
+				SDL_SetWindowSize( self->sdl_window, self->window_width, self->window_height );
+			}
 
 			// Get the display aspect ratio
 			double display_ratio = mlt_properties_get_double( properties, "display_ratio" );
@@ -692,6 +702,9 @@ static int consumer_play_video( consumer_sdl self, mlt_frame frame )
 				SDL_UpdateTexture( self->sdl_texture, NULL, planes[0], strides[0] );
 			}
 			SDL_RenderClear( self->sdl_renderer );
+			//SDL_SetRenderDrawColor( self->sdl_renderer, 255, 0, 0, 255 );
+			//SDL_RenderFillRect(self->sdl_renderer, NULL );
+
 			SDL_RenderCopy( self->sdl_renderer, self->sdl_texture, NULL, &self->sdl_rect );
 			SDL_RenderPresent( self->sdl_renderer );
 		}

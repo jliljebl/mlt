@@ -58,8 +58,6 @@ struct consumer_sdl_widget_s
 	pthread_cond_t video_cond;
 	int window_width;
 	int window_height;
-	int previous_width;
-	int previous_height;
 	int width;
 	int height;
 	int out_channels;
@@ -75,6 +73,14 @@ struct consumer_sdl_widget_s
 #endif
 };
 
+
+/** SDL Window and Renderer can only be created once per process,
+  all consumer instances must use the same objects.
+*/
+
+static SDL_Window *sdl_window_singleton = NULL;
+static SDL_Renderer *sdl_renderer_singleton = NULL;
+
 /** Forward references to static functions.
 */
 
@@ -85,7 +91,8 @@ static void consumer_purge( mlt_consumer parent );
 static void consumer_close( mlt_consumer parent );
 static void *consumer_thread( void * );
 static void consumer_sdl_event( mlt_listener listener, mlt_properties owner, mlt_service self, void **args );
-static int setup_sdl_video( consumer_sdl self );
+static int setup_sdl_video( consumer_sdl self, int audio_off );
+static int setup_texture( consumer_sdl self );
 
 /** This is what will be called by the factory - anything can be passed in
 	via the argument, but keep it simple.
@@ -189,6 +196,7 @@ int consumer_start( mlt_consumer parent )
 	if ( !self->running )
 	{
 		mlt_properties properties = MLT_CONSUMER_PROPERTIES( parent );
+
 		int audio_off = mlt_properties_get_int( properties, "audio_off" );
 		char *output_display = mlt_properties_get( properties, "output_display" );
 		char *window_id = mlt_properties_get( properties, "window_id" );
@@ -224,8 +232,8 @@ int consumer_start( mlt_consumer parent )
 				self->height = mlt_properties_get_int( self->properties, "height" );
 		}
 
-		if ( audio_off == 0 )
-			SDL_InitSubSystem( SDL_INIT_AUDIO );
+		// WHERE?
+
 
 		// Default window size
 		if ( mlt_properties_get_int( self->properties, "resolution" ) )
@@ -240,9 +248,31 @@ int consumer_start( mlt_consumer parent )
 			self->window_height = self->height;
 		}
 
-		// Initialize SDL video if needed.
-		if ( setup_sdl_video(self) )
-			return 1;
+		// Initialize SDL video singletons if needed and take references.
+		// Create new texture for all consumer starts.
+		if ( sdl_window_singleton )
+		{
+			self->sdl_window = sdl_window_singleton;
+			self->sdl_renderer = sdl_renderer_singleton;
+
+			pthread_mutex_lock( &mlt_sdl_mutex );
+			if ( audio_off == 0 )
+				SDL_InitSubSystem( SDL_INIT_AUDIO );
+			int error = setup_texture( self );
+			pthread_mutex_unlock( &mlt_sdl_mutex );
+
+			if ( error )
+				return 1;
+		}
+		else
+		{
+			if ( setup_sdl_video( self, audio_off ) )
+				return 1;
+
+			self->sdl_window = sdl_window_singleton;
+			self->sdl_renderer = sdl_renderer_singleton;
+		}
+
 
 		pthread_create( &self->thread, NULL, consumer_thread, self );
 	}
@@ -281,6 +311,17 @@ int consumer_stop( mlt_consumer parent )
 		if ( self->sdl_texture )
 			SDL_DestroyTexture( self->sdl_texture );
 		self->sdl_texture = NULL;
+
+		self->sdl_window = NULL;
+		self->sdl_renderer = NULL;
+
+		if ( !mlt_properties_get_int( MLT_CONSUMER_PROPERTIES( parent ), "audio_off" ) )
+			SDL_QuitSubSystem( SDL_INIT_AUDIO );
+
+		/**
+		if ( self->sdl_texture )
+			SDL_DestroyTexture( self->sdl_texture );
+		self->sdl_texture = NULL;
 		if ( self->sdl_renderer )
 			SDL_DestroyRenderer( self->sdl_renderer );
 		self->sdl_renderer = NULL;
@@ -294,6 +335,7 @@ int consumer_stop( mlt_consumer parent )
 			SDL_QuitSubSystem( SDL_INIT_AUDIO );
 		if ( mlt_properties_get_int( MLT_CONSUMER_PROPERTIES( parent ), "sdl_started" ) == 0 )
 			SDL_Quit( );
+			*/
 		pthread_mutex_unlock( &mlt_sdl_mutex );
 	}
 
@@ -510,14 +552,17 @@ static int consumer_play_audio( consumer_sdl self, mlt_frame frame, int init_aud
 	return init_audio;
 }
 
-static int setup_sdl_video( consumer_sdl self )
+static int setup_sdl_video( consumer_sdl self, int audio_off )
 {
 	printf("IN: setup_sdl_video!\n");
 	fflush(stdout);
 
 	int error = 0;
-	int sdl_flags = SDL_WINDOW_RESIZABLE;
-	int texture_format = SDL_PIXELFORMAT_YUY2;
+	//int sdl_flags = SDL_WINDOW_RESIZABLE;
+	//int texture_format = SDL_PIXELFORMAT_YUY2;
+
+	if ( audio_off == 0 )
+		SDL_InitSubSystem( SDL_INIT_AUDIO );
 
 	// Skip this if video is disabled.
 	int video_off = mlt_properties_get_int( self->properties, "video_off" );
@@ -537,6 +582,7 @@ static int setup_sdl_video( consumer_sdl self )
 		}
 	}
 
+/**
 #ifdef MLT_IMAGE_FORMAT
 	int image_format = mlt_properties_get_int( self->properties, "mlt_image_format" );
 
@@ -559,37 +605,20 @@ static int setup_sdl_video( consumer_sdl self )
 		return -1;
 	}
 #endif
-	texture_format = SDL_PIXELFORMAT_YUY2;
-	if ( mlt_properties_get_int( self->properties, "fullscreen" ) )
-	{
-		self->window_width = self->width;
-		self->window_height = self->height;
-		sdl_flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
-		SDL_ShowCursor( SDL_DISABLE );
-	}
-
+*/
 	pthread_mutex_lock( &mlt_sdl_mutex );
 
 	mlt_properties parent_properties = MLT_CONSUMER_PROPERTIES( &self->parent );
 	int xid = mlt_properties_get_int( parent_properties, "window_id" );
-  self->sdl_window = SDL_CreateWindowFrom ( (void*) xid );
-	SDL_SetWindowResizable( self->sdl_window, SDL_TRUE );
 
-	self->sdl_renderer = SDL_CreateRenderer( self->sdl_window, -1, SDL_RENDERER_ACCELERATED);
+  sdl_window_singleton = SDL_CreateWindowFrom ( (void*) xid );
+	SDL_SetWindowResizable( sdl_window_singleton, SDL_TRUE );
 
-	if ( self->sdl_renderer )
+	sdl_renderer_singleton = SDL_CreateRenderer( sdl_window_singleton, -1, SDL_RENDERER_ACCELERATED);
+
+	if ( sdl_renderer_singleton )
 	{
-		// Get texture width and height from the profile.
-		int width = mlt_properties_get_int( self->properties, "width" );
-		int height = mlt_properties_get_int( self->properties, "height" );
-		self->sdl_texture = SDL_CreateTexture( self->sdl_renderer, texture_format,
-			SDL_TEXTUREACCESS_STREAMING, width, height );
-		if ( self->sdl_texture ) {
-			SDL_SetRenderDrawColor( self->sdl_renderer, 0, 0, 0, 255);
-		} else {
-			mlt_log_error( MLT_CONSUMER_SERVICE(&self->parent), "Failed to create SDL texture: %s\n", SDL_GetError() );
-			error = -1;
-		}
+			error = setup_texture( self );
 	} else {
 		mlt_log_error( MLT_CONSUMER_SERVICE(&self->parent), "Failed to create SDL renderer: %s\n", SDL_GetError() );
 		error = -1;
@@ -597,6 +626,50 @@ static int setup_sdl_video( consumer_sdl self )
 	pthread_mutex_unlock( &mlt_sdl_mutex );
 
 	return error;
+}
+
+static int setup_texture( consumer_sdl self )
+{
+	int error = 0;
+
+	int texture_format = SDL_PIXELFORMAT_YUY2;
+
+	#ifdef MLT_IMAGE_FORMAT
+		int image_format = mlt_properties_get_int( self->properties, "mlt_image_format" );
+
+		if ( image_format ) switch ( image_format ) {
+		case mlt_image_rgb24:
+			texture_format = SDL_PIXELFORMAT_RGB24;
+			break;
+		case mlt_image_rgb24a:
+			texture_format = SDL_PIXELFORMAT_ABGR8888;
+			break;
+		case mlt_image_yuv420p:
+			texture_format = SDL_PIXELFORMAT_IYUV;
+			break;
+		case mlt_image_yuv422:
+			texture_format = SDL_PIXELFORMAT_YUY2;
+			break;
+		default:
+			mlt_log_error( MLT_CONSUMER_SERVICE(&self->parent), "Invalid image format %s\n",
+				mlt_image_format_name( image_format ) );
+			return -1;
+		}
+	#endif
+
+	// Get texture width and height from the profile.
+	int width = mlt_properties_get_int( self->properties, "width" );
+	int height = mlt_properties_get_int( self->properties, "height" );
+	self->sdl_texture = SDL_CreateTexture( sdl_renderer_singleton, texture_format,
+		SDL_TEXTUREACCESS_STREAMING, width, height );
+	if ( self->sdl_texture ) {
+		SDL_SetRenderDrawColor( self->sdl_renderer, 0, 0, 0, 255);
+	} else {
+		mlt_log_error( MLT_CONSUMER_SERVICE(&self->parent), "Failed to create SDL texture: %s\n", SDL_GetError() );
+		error = -1;
+	}
+
+		return error;
 }
 
 static int consumer_play_video( consumer_sdl self, mlt_frame frame )

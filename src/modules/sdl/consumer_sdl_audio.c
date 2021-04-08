@@ -1,6 +1,6 @@
 /*
  * consumer_sdl_audio.c -- A Simple DirectMedia Layer audio-only consumer
- * Copyright (C) 2009-2019 Meltytech, LLC
+ * Copyright (C) 2009-2020 Meltytech, LLC
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -311,7 +311,7 @@ static int consumer_play_audio( consumer_sdl self, mlt_frame frame, int init_aud
 	int scrub = mlt_properties_get_int( properties, "scrub_audio" );
 	static int counter = 0;
 
-	int samples = mlt_sample_calculator( mlt_properties_get_double( self->properties, "fps" ), frequency, counter++ );
+	int samples = mlt_audio_calculate_frame_samples( mlt_properties_get_double( self->properties, "fps" ), frequency, counter++ );
 	int16_t *pcm;
 	mlt_frame_get_audio( frame, (void**) &pcm, &afmt, &frequency, &channels, &samples );
 	*duration = ( ( samples * 1000 ) / frequency );
@@ -597,7 +597,7 @@ static void *consumer_thread( void *arg )
 			while ( self->running && speed != 0 && mlt_deque_count( self->queue ) > 15 )
 				nanosleep( &tm, NULL );
 
-			// Push this frame to the back of the queue
+			// Push this frame to the back of the video queue
 			if ( self->running && speed )
 			{
 				pthread_mutex_lock( &self->video_mutex );
@@ -639,7 +639,7 @@ static void *consumer_thread( void *arg )
 //					mlt_consumer_purge( consumer );
 //				last_position = mlt_frame_get_position( frame );
 			}
-			else
+			else if (speed == 0.0)
 			{
 				mlt_consumer_purge( consumer );
 //				last_position = -1;

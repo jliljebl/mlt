@@ -26,11 +26,6 @@ OBJS += filter_avcolour_space.o \
 CFLAGS += -DFILTERS
 endif
 
-ifdef VDPAU
-CFLAGS += -DVDPAU $(shell pkg-config pkg-config --cflags x11)
-LDFLAGS += $(LIBDL) $(shell pkg-config pkg-config --libs x11)
-endif
-
 ifdef CODECS
 OBJS += producer_avformat.o \
 	    consumer_avformat.o
@@ -71,6 +66,7 @@ install: all
 	install -m 755 $(TARGET) "$(DESTDIR)$(moduledir)"
 	install -d "$(DESTDIR)$(mltdatadir)/avformat"
 	install -m 644 blacklist.txt "$(DESTDIR)$(mltdatadir)/avformat"
+	install -m 644 yuv_only.txt "$(DESTDIR)$(mltdatadir)/avformat"
 	install -m 644 producer_avformat.yml "$(DESTDIR)$(mltdatadir)/avformat"
 	install -m 644 consumer_avformat.yml "$(DESTDIR)$(mltdatadir)/avformat"
 

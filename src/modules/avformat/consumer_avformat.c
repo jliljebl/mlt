@@ -1,6 +1,6 @@
 /*
  * consumer_avformat.c -- an encoder based on avformat
- * Copyright (C) 2003-2020 Meltytech, LLC
+ * Copyright (C) 2003-2021 Meltytech, LLC
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -325,6 +325,33 @@ static void color_trc_from_colorspace( mlt_properties properties )
 	}
 }
 
+static void color_primaries_from_colorspace( mlt_properties properties )
+{
+	// Default color transfer characteristic from colorspace.
+	switch ( mlt_properties_get_int( properties, "colorspace" ) )
+	{
+	case 0: // sRGB
+	case 709:
+		mlt_properties_set_int( properties, "color_primaries", AVCOL_PRI_BT709 );
+		break;
+	case 470:
+		mlt_properties_set_int( properties, "color_primaries", AVCOL_PRI_BT470M );
+		break;
+	case 240:
+		mlt_properties_set_int( properties, "color_primaries", AVCOL_PRI_SMPTE240M );
+		break;
+	case 601:
+		mlt_properties_set_int( properties, "color_primaries",
+			mlt_properties_get_int(properties, "height") == 576? AVCOL_PRI_BT470BG : AVCOL_PRI_SMPTE170M);
+		break;
+	case 170:
+		mlt_properties_set_int( properties, "color_primaries", AVCOL_PRI_SMPTE170M );
+		break;
+	default:
+		break;
+	}
+}
+
 static void property_changed( mlt_properties owner, mlt_consumer self, char *name )
 {
 	mlt_properties properties = MLT_CONSUMER_PROPERTIES( self );
@@ -422,7 +449,7 @@ static int consumer_start( mlt_consumer consumer )
 		mlt_properties_set_data( doc, "audio_codecs", codecs, 0, NULL, NULL );
 		while ( ( codec = av_codec_next( codec ) ) )
 #if LIBAVCODEC_VERSION_INT >= ((57<<16)+(37<<8)+0)
-			if ( (codec->encode2 || codec->send_frame) && codec->type == AVMEDIA_TYPE_AUDIO )
+			if ( av_codec_is_encoder(codec) && codec->type == AVMEDIA_TYPE_AUDIO )
 #else
 			if ( codec->encode2 && codec->type == AVMEDIA_TYPE_AUDIO )
 #endif
@@ -448,7 +475,7 @@ static int consumer_start( mlt_consumer consumer )
 		mlt_properties_set_data( doc, "video_codecs", codecs, 0, NULL, NULL );
 		while ( ( codec = av_codec_next( codec ) ) )
 #if LIBAVCODEC_VERSION_INT >= ((57<<16)+(37<<8)+0)
-			if ( (codec->encode2 || codec->send_frame) && codec->type == AVMEDIA_TYPE_VIDEO )
+			if ( av_codec_is_encoder(codec) && codec->type == AVMEDIA_TYPE_VIDEO )
 #else
 			if ( codec->encode2 && codec->type == AVMEDIA_TYPE_VIDEO )
 #endif
@@ -475,7 +502,9 @@ static int consumer_start( mlt_consumer consumer )
 		// we must do this after properties have been set but before first frame request.
 		if ( !mlt_properties_get( properties, "color_trc") )
 			color_trc_from_colorspace( properties );
-	
+		if ( !mlt_properties_get( properties, "color_primaries") )
+			color_primaries_from_colorspace( properties );
+
 		// Assign the thread to properties
 		mlt_properties_set_data( properties, "thread", thread, sizeof( pthread_t ), free, NULL );
 
@@ -1134,6 +1163,11 @@ static int open_video( mlt_properties properties, AVFormatContext *oc, AVStream 
 			video_enc->pix_fmt = codec->pix_fmts[ 0 ];
 	}
 
+	const AVPixFmtDescriptor* srcDesc = av_pix_fmt_desc_get(video_enc->pix_fmt);
+	if (srcDesc->flags & AV_PIX_FMT_FLAG_RGB) {
+		st->codec->colorspace = AVCOL_SPC_RGB;
+	}
+
 	int result = codec && avcodec_open2( video_enc, codec, NULL ) >= 0;
 	
 	return result;
@@ -1409,6 +1443,11 @@ receive_audio_packet:
 			if ( ++ctx->error_count > 2 )
 				return -1;
 		}
+		else if (!samples) // flushing
+		{
+			pkt.stream_index = stream->index;
+			av_interleaved_write_frame(ctx->oc, &pkt);
+		}
 
 		if ( i == 0 )
 		{
@@ -1664,12 +1703,12 @@ static void *consumer_thread( void *arg )
 		// single track
 		if ( !is_multi )
 		{
-			mlt_channel_layout layout = mlt_channel_layout_id( mlt_properties_get( properties, "channel_layout" ) );
+			mlt_channel_layout layout = mlt_audio_channel_layout_id( mlt_properties_get( properties, "channel_layout" ) );
 			if( layout == mlt_channel_auto ||
 				layout == mlt_channel_independent ||
-				mlt_channel_layout_channels( layout ) != enc_ctx->channels )
+				mlt_audio_channel_layout_channels( layout ) != enc_ctx->channels )
 			{
-				layout = mlt_channel_layout_default( enc_ctx->channels );
+				layout = mlt_audio_channel_layout_default( enc_ctx->channels );
 			}
 			enc_ctx->audio_st[0] = add_audio_stream( consumer, enc_ctx->oc, audio_codec, enc_ctx->channels, mlt_to_av_channel_layout( layout ) );
 			enc_ctx->total_channels = enc_ctx->channels;
@@ -1852,7 +1891,7 @@ static void *consumer_thread( void *arg )
 			// Get audio and append to the fifo
 			if ( !enc_ctx->terminated && enc_ctx->audio_st[0] )
 			{
-				samples = mlt_sample_calculator( fps, enc_ctx->frequency, count ++ );
+				samples = mlt_audio_calculate_frame_samples( fps, enc_ctx->frequency, count ++ );
 				enc_ctx->channels = enc_ctx->total_channels;
 				mlt_frame_get_audio( frame, &pcm, &aud_fmt, &enc_ctx->frequency, &enc_ctx->channels, &samples );
 
@@ -1935,8 +1974,7 @@ static void *consumer_thread( void *arg )
 							width, height, pix_fmt, flags, NULL, NULL, NULL);
 						int src_colorspace = mlt_properties_get_int( frame_properties, "colorspace" );
 						int src_full_range = mlt_properties_get_int( frame_properties, "full_luma" );
-						if ( (src_colorspace && dst_colorspace != src_colorspace) || dst_full_range != src_full_range )
-							mlt_set_luma_transfer( context, src_colorspace, dst_colorspace, src_full_range, dst_full_range );
+						mlt_set_luma_transfer( context, src_colorspace, dst_colorspace, src_full_range, dst_full_range );
 						sws_scale( context, (const uint8_t* const*) video_avframe.data, video_avframe.linesize, 0, height,
 							converted_avframe->data, converted_avframe->linesize);
 						sws_freeContext( context );

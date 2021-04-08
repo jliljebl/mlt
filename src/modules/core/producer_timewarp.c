@@ -1,6 +1,6 @@
 /*
  * producer_timewarp.c -- modify speed and direction of a clip
- * Copyright (C) 2015-2019 Meltytech, LLC
+ * Copyright (C) 2015-2020 Meltytech, LLC
  * Author: Brian Matherly <code@brianmatherly.com>
  *
  * This library is free software; you can redistribute it and/or
@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 
 // Private Types
 typedef struct
@@ -84,114 +85,21 @@ static int producer_get_audio( mlt_frame frame, void** buffer, mlt_audio_format*
 {
 	mlt_producer producer = mlt_frame_pop_audio( frame );
 	private_data* pdata = (private_data*)producer->child;
+	struct mlt_audio_s audio;
+	mlt_audio_set_values( &audio, *buffer, *frequency, *format, *samples, *channels );
 
-	int error = mlt_frame_get_audio( frame, buffer, format, frequency, channels, samples );
+	int error = mlt_frame_get_audio( frame, &audio.data, &audio.format, &audio.frequency, &audio.channels, &audio.samples );
 
 	// Scale the frequency to account for the speed change.
 	// The resample normalizer will convert it to the requested frequency
-	*frequency = (double)*frequency * fabs(pdata->speed);
+	audio.frequency = (double)audio.frequency * fabs(pdata->speed);
 
 	if( pdata->speed < 0.0 )
 	{
-		// Reverse the audio in this frame
-		int c = 0;
-		switch ( *format )
-		{
-			// Interleaved 8bit formats
-			case mlt_audio_u8:
-			{
-				int8_t tmp;
-				for ( c = 0; c < *channels; c++ )
-				{
-					// Pointer to first sample
-					int8_t* a = (int8_t*)*buffer + c;
-					// Pointer to last sample
-					int8_t* b = (int8_t*)*buffer + ((*samples - 1) * *channels) + c;
-					while( a < b )
-					{
-						tmp = *a;
-						*a = *b;
-						*b = tmp;
-						a += *channels;
-						b -= *channels;
-					}
-				}
-				break;
-			}
-			// Interleaved 16bit formats
-			case mlt_audio_s16:
-			{
-				int16_t tmp;
-				for ( c = 0; c < *channels; c++ )
-				{
-					// Pointer to first sample
-					int16_t *a = (int16_t*)*buffer + c;
-					// Pointer to last sample
-					int16_t *b = (int16_t*)*buffer + ((*samples - 1) * *channels) + c;
-					while( a < b )
-					{
-						tmp = *a;
-						*a = *b;
-						*b = tmp;
-						a += *channels;
-						b -= *channels;
-					}
-				}
-				break;
-			}
-			// Interleaved 32bit formats
-			case mlt_audio_s32le:
-			case mlt_audio_f32le:
-			{
-				int32_t tmp;
-				for ( c = 0; c < *channels; c++ )
-				{
-					// Pointer to first sample
-					int32_t *a = (int32_t*)*buffer + c;
-					// Pointer to last sample
-					int32_t *b = (int32_t*)*buffer + ((*samples - 1)* *channels) + c;
-					while( a < b )
-					{
-						tmp = *a;
-						*a = *b;
-						*b = tmp;
-						a += *channels;
-						b -= *channels;
-					}
-				}
-				break;
-			}
-			// Non-Interleaved 32bit formats
-			case mlt_audio_s32:
-			case mlt_audio_float:
-			{
-				int32_t tmp;
-				for ( c = 0; c < *channels; c++ )
-				{
-					// Pointer to first sample
-					int32_t *a = (int32_t*)*buffer + (c * *samples);
-					// Pointer to last sample
-					int32_t *b = (int32_t*)*buffer + ((c + 1) * *samples) - 1;
-					while( a < b )
-					{
-						tmp = *a;
-						*a = *b;
-						*b = tmp;
-						a++;
-						b--;
-					}
-				}
-				break;
-			}
-			case mlt_audio_none:
-				break;
-			default:
-				mlt_log_error( MLT_PRODUCER_SERVICE(producer),
-						"Unknown Audio Format %s\n",
-						mlt_audio_format_name( *format ) );
-				break;
-		}
+		mlt_audio_reverse( &audio );
 	}
+
+	mlt_audio_get_values( &audio, buffer, frequency, format, samples, channels );
 
 	return error;
 }
@@ -233,6 +141,9 @@ static int producer_get_frame( mlt_producer producer, mlt_frame_ptr frame, int i
 		if( pdata->speed < 0.0 )
 		{
 			clip_position = mlt_properties_get_int( producer_properties, "out" ) - clip_position;
+		}
+		if (!mlt_properties_get_int(producer_properties, "ignore_points")) {
+			clip_position += mlt_producer_get_in(producer);
 		}
 		mlt_producer_seek( pdata->clip_producer, clip_position );
 
@@ -301,6 +212,7 @@ mlt_producer producer_timewarp_init( mlt_profile profile, mlt_service_type type,
 
 	if ( arg && producer && pdata )
 	{
+		double frame_rate_num_scaled;
 		mlt_properties producer_properties = MLT_PRODUCER_PROPERTIES( producer );
 
 		// Initialize the producer
@@ -338,7 +250,17 @@ mlt_producer producer_timewarp_init( mlt_profile profile, mlt_service_type type,
 			pdata->clip_profile->frame_rate_num *= 1000;
 			pdata->clip_profile->frame_rate_den *= 1000;
 		}
-		pdata->clip_profile->frame_rate_num = (double)pdata->clip_profile->frame_rate_num / fabs(pdata->speed);
+		frame_rate_num_scaled = (double)pdata->clip_profile->frame_rate_num / fabs(pdata->speed);
+		if (frame_rate_num_scaled > INT_MAX) // Check for overflow in case speed < 1.0
+		{
+			//scale by denominator to avoid overflow.
+			pdata->clip_profile->frame_rate_den = (double)pdata->clip_profile->frame_rate_den * fabs(pdata->speed);
+		}
+		else
+		{
+			//scale by numerator
+			pdata->clip_profile->frame_rate_num = frame_rate_num_scaled;
+		}
 
 		// Create a producer for the clip using the false profile.
 		pdata->clip_producer = mlt_factory_producer( pdata->clip_profile, "abnormal", resource );

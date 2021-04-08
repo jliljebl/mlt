@@ -18,11 +18,13 @@ OBJS = consumer_blipflash.o \
 	   filter_loudness.o \
 	   filter_loudness_meter.o \
 	   filter_lumakey.o \
+	   filter_pillar_echo.o \
 	   filter_rgblut.o \
 	   filter_sepia.o \
 	   filter_spot_remover.o \
 	   filter_text.o \
 	   filter_timer.o \
+	   filter_strobe.o \
 	   producer_blipflash.o \
 	   producer_count.o \
 	   transition_affine.o

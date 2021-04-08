@@ -24,7 +24,8 @@ ifeq ($(targetos), Linux)
 SHFLAGS += -Wl,--version-script=mlt.vers
 endif
 
-OBJS = mlt_frame.o \
+OBJS = mlt_audio.o \
+	   mlt_frame.o \
 	   mlt_version.o \
 	   mlt_geometry.o \
 	   mlt_deque.o \
@@ -52,7 +53,8 @@ OBJS = mlt_frame.o \
 	   mlt_slices.o \
 	   mlt_luma_map.o
 
-INCS = mlt_consumer.h \
+INCS = mlt_audio.h \
+	   mlt_consumer.h \
 	   mlt_version.h \
 	   mlt_factory.h \
 	   mlt_filter.h \
@@ -90,9 +92,9 @@ OBJS += ../win32/win32.o ../win32/strptime.o
 SRCS += ../win32/win32.c ../win32/strptime.c
 endif
 
-CFLAGS += $(RDYNAMIC) -DPREFIX_DATA="\"$(mltdatadir)\"" -DPREFIX_LIB="\"$(moduledir)\""
+CFLAGS += -DPREFIX_DATA="\"$(mltdatadir)\"" -DPREFIX_LIB="\"$(moduledir)\""
 
-LDFLAGS += $(LIBDL) -lpthread -lm
+LDFLAGS += $(RDYNAMIC) $(LIBDL) -lpthread -lm
 
 all:	$(TARGET)
 
@@ -128,8 +130,8 @@ install:
 		ln -sf $(TARGET) $(DESTDIR)$(libdir)/$(SONAME) ; \
 		ln -sf $(TARGET) $(DESTDIR)$(libdir)/$(NAME) ; \
 	fi
-	install -d "$(DESTDIR)$(prefix)/include/mlt/framework"
-	install -m 644 $(INCS) "$(DESTDIR)$(prefix)/include/mlt/framework"
+	install -d "$(DESTDIR)$(includedir)/mlt/framework"
+	install -m 644 $(INCS) "$(DESTDIR)$(includedir)/mlt/framework"
 	install -d "$(DESTDIR)$(mltdatadir)"
 	install -m 644 metaschema.yaml "$(DESTDIR)$(mltdatadir)"
 
@@ -148,7 +150,7 @@ uninstall:
 		fi ; \
 		rm -f "$(DESTDIR)$(libdir)/libmlt.def" ; \
 	fi
-	rm -rf "$(DESTDIR)$(prefix)/include/mlt/framework"
+	rm -rf "$(DESTDIR)$(includedir)/mlt/framework"
 	rm -f "$(DESTDIR)$(mltdatadir)/metaschema.yaml"
 
 ifneq ($(wildcard .depend),)
